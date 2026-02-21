@@ -9134,11 +9134,31 @@ bool BfModule::CheckGenericConstraints(const BfGenericParamSource& genericParamS
 		bool implementsInterface = false;
 		if (origCheckArgType != checkArgType)
 		{
-			implementsInterface = CanCast(BfTypedValue(BfIRValue::sValueless, origCheckArgType), convCheckConstraint);
+			if (origCheckArgType->IsTypeInstance())
+			{
+				if (TypeIsSubTypeOf(origCheckArgType->ToTypeInstance(), typeConstraintInst))
+					implementsInterface = true;
+			}
+			else
+			{
+				if (CanCast(BfTypedValue(BfIRValue::sValueless, origCheckArgType), convCheckConstraint))
+					implementsInterface = true;
+			}
 		}
 
 		if (!implementsInterface)
-			implementsInterface = CanCast(BfTypedValue(BfIRValue::sValueless, checkArgType), convCheckConstraint);
+		{
+			if (checkArgType->IsTypeInstance())
+			{
+				if (TypeIsSubTypeOf(checkArgType->ToTypeInstance(), typeConstraintInst))
+					implementsInterface = true;
+			}
+			else
+			{
+				if (CanCast(BfTypedValue(BfIRValue::sValueless, checkArgType), convCheckConstraint))
+					implementsInterface = true;
+			}
+		}
 
 		if ((!implementsInterface) && (origCheckArgType->IsWrappableType()))
 		{
@@ -16152,9 +16172,34 @@ bool BfModule::IsInSpecializedGeneric()
 {
 	if ((mCurTypeInstance != NULL) && (mCurTypeInstance->IsSpecializedType()))
 		return true;
-	if ((mCurMethodInstance == NULL) || (mCurMethodInstance->mIsUnspecialized))
-		return false;
-	return (mCurMethodInstance->GetNumGenericArguments() != 0);
+
+	auto checkMethodInstance = mCurMethodInstance;
+	auto checkMethodState = mCurMethodState;
+
+	// If we are in a lambda/local then we need to see if our outer method is generic, as well
+	while (true)
+	{
+		if (checkMethodInstance == NULL)
+			return false;
+
+		if ((!checkMethodInstance->mIsUnspecialized) && (checkMethodInstance->GetNumGenericArguments() > 0))
+			return true;
+
+		if (checkMethodState == NULL)
+			break;
+		if (checkMethodState->mMethodInstance != checkMethodInstance)
+			break;
+
+		if (checkMethodState->mClosureState == NULL)
+			break;
+
+		checkMethodState = checkMethodState->mPrevMethodState;
+		if (checkMethodState == NULL)
+			break;
+		checkMethodInstance = checkMethodState->mMethodInstance;
+	}
+
+	return false;
 }
 
 bool BfModule::IsInSpecializedSection()
